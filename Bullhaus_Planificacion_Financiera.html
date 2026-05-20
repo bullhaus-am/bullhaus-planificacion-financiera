@@ -384,7 +384,7 @@
       const mid=(lo+hi)/2;
       const cut=(mid/b.exp0-1)*100;
       const r=simulate(retPct,infPct,cut,decMode,b);
-      if(r.portEnd[r.portEnd.length-1]>=0) lo=mid; else hi=mid;
+      if(r.portEnd.every(v=>v>0)) lo=mid; else hi=mid;
     }
     return lo;
   }
