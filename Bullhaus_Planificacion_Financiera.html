@@ -110,6 +110,7 @@
     #tab-escenarios{break-before:page;padding-top:8px;}
     .panel,.card,.chart-box,table,.legend,.controls>div{break-inside:avoid;}
     .print-only{display:block;font-size:12px;color:var(--text-dim);margin-top:6px;}
+    #printClient{font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:var(--gold);margin-top:12px;}
     footer{break-inside:avoid;}
   }
 
@@ -153,6 +154,7 @@
     </div>
     <h1>Planificación financiera para la jubilación</h1>
     <p class="lead">Proyección de ingresos, gastos y patrimonio desde la edad actual hasta los <span id="endAge-lead">100</span> años. Ajuste los parámetros de partida y las variables del escenario para explorar distintos casos de rentabilidad y nivel de gasto.</p>
+    <div class="print-only" id="printClient" style="display:none;"></div>
     <div class="print-only" id="printDate"></div>
   </header>
 
@@ -570,7 +572,17 @@
   }));
 
   document.getElementById('printDate').textContent='Documento generado el '+new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
-  document.getElementById('exportBtn').addEventListener('click',()=>window.print());
+  document.getElementById('exportBtn').addEventListener('click',()=>{
+    const el=document.getElementById('printClient');
+    if(confirm('¿Incluir el nombre del cliente en el PDF?')){
+      const nombre=(prompt('Nombre del cliente:','')||'').trim();
+      if(nombre){ el.textContent='Preparado para: '+nombre; el.style.display=''; }
+      else { el.textContent=''; el.style.display='none'; }
+    } else {
+      el.textContent=''; el.style.display='none';
+    }
+    window.print();
+  });
   window.addEventListener('beforeprint',()=>{
     document.body.classList.add('printing');   // muestra ambos tabs para que tengan dimensiones medibles
     renderMC();                                 // crea/actualiza el gráfico de Monte Carlo si no se visitó el tab
