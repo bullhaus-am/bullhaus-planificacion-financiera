@@ -225,9 +225,9 @@
       </div>
 
       <div>
-        <div class="ctrl-head"><label>Caída del ingreso laboral</label><span class="out" id="dec-out">Baja al final (78)</span></div>
-        <input type="range" id="dec" min="0" max="2" step="1" value="1">
-        <div class="hint">Pleno hasta cerca del retiro · baja solo en el tramo final</div>
+        <div class="ctrl-head"><label>Evolución del ingreso laboral</label><span class="out" id="evo-out">0%/año</span></div>
+        <input type="range" id="evo" min="-20" max="20" step="1" value="0">
+        <div class="hint">Crecimiento (+) o caída (−) anual del ingreso mientras trabaja · se detiene al retirarse</div>
       </div>
 
     </div>
@@ -349,25 +349,19 @@
   const fmtK = (n)=>(n<0?'-':'')+'$'+Math.round(Math.abs(n)/1000)+'k';
   const fmtM = (n)=>(n<0?'-':'')+'$'+(Math.abs(n)/1e6).toFixed(2).replace('.',',')+'M';
 
-  function laborIncome(age, mode, b){
-    if(age>=b.workUntil) return 0;
-    const yearsLeft=b.workUntil-b.startAge;
-    if(yearsLeft<=0) return 0;
-    if(mode===0) return b.inc0;                          // Corte seco: pleno hasta el retiro
-    const taperFrac=(mode===1)?0.5:0.8;                  // porción final en la que el ingreso baja
-    const taper=Math.max(1,Math.round(yearsLeft*taperFrac));
-    const taperStart=b.workUntil-taper;                  // edad en la que arranca la baja
-    if(age<=taperStart) return b.inc0;                   // pleno antes del tramo final
-    return b.inc0*(b.workUntil-age)/taper;               // baja lineal hasta 0 en el retiro
+  function laborIncome(age, evoPct, b){
+    if(age>=b.workUntil) return 0;                       // se detiene al retirarse
+    const t=age-b.startAge;                              // años transcurridos desde hoy
+    return b.inc0*Math.pow(1+evoPct/100, t);             // evoluciona evoPct%/año mientras trabaja
   }
 
-  function simulate(retPct,infPct,cutPct,decMode,b){
+  function simulate(retPct,infPct,cutPct,evoPct,b){
     const ret=retPct/100, inf=infPct/100, cutMul=1+cutPct/100;
     const ages=[],labor=[],expense=[],withdrawal=[],portEnd=[];
     let port=b.p0;
     for(let age=b.startAge; age<=b.endAge; age++){
       const yrs=age-b.startAge;
-      const inc=laborIncome(age,decMode,b);
+      const inc=laborIncome(age,evoPct,b);
       const exp=b.exp0*cutMul*Math.pow(1+inf,yrs);
       const need=exp-inc;
       let wd=0;
@@ -379,13 +373,13 @@
     return {ages,labor,expense,withdrawal,portEnd};
   }
 
-  function maxSustainable(retPct,infPct,decMode,b){
+  function maxSustainable(retPct,infPct,evoPct,b){
     if(b.exp0<=0) return 0;
     let lo=0, hi=Math.max(400000,b.exp0*4);
     for(let i=0;i<40;i++){
       const mid=(lo+hi)/2;
       const cut=(mid/b.exp0-1)*100;
-      const r=simulate(retPct,infPct,cut,decMode,b);
+      const r=simulate(retPct,infPct,cut,evoPct,b);
       if(r.portEnd.every(v=>v>0)) lo=mid; else hi=mid;
     }
     return lo;
@@ -397,7 +391,7 @@
 
   function pctl(sorted,p){const i=(sorted.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo);}
 
-  function simulateMC(meanRetPct,volPct,infPct,cutPct,decMode,b,nSims,rng){
+  function simulateMC(meanRetPct,volPct,infPct,cutPct,evoPct,b,nSims,rng){
     const inf=infPct/100, cutMul=1+cutPct/100, mu=meanRetPct/100, sigma=volPct/100;
     const nYears=b.endAge-b.startAge+1;
     const byYear=Array.from({length:nYears},()=>new Float64Array(nSims));
@@ -406,7 +400,7 @@
       let port=b.p0, depleted=false;
       for(let y=0;y<nYears;y++){
         const age=b.startAge+y;
-        const inc=laborIncome(age,decMode,b);
+        const inc=laborIncome(age,evoPct,b);
         const exp=b.exp0*cutMul*Math.pow(1+inf,y);
         const need=exp-inc;
         port=port*(1+(mu+sigma*randn(rng)));
@@ -437,7 +431,7 @@
     const retPct=+document.getElementById('ret').value;
     const infPct=+document.getElementById('inf').value;
     const cutPct=+document.getElementById('cut').value;
-    const decMode=+document.getElementById('dec').value;
+    const evoPct=+document.getElementById('evo').value;
 
     document.getElementById('startAge-out').textContent=b.startAge+' años';
     document.getElementById('yearsToRet-out').textContent=(b.workUntil-b.startAge);
@@ -448,11 +442,11 @@
     document.getElementById('ret-out').textContent=retPct.toFixed(1).replace('.',',')+'%';
     document.getElementById('inf-out').textContent=infPct.toFixed(1).replace('.',',')+'%';
     document.getElementById('cut-out').textContent=(cutPct>0?'+':'')+cutPct+'%';
-    document.getElementById('dec-out').textContent=['Corte seco ('+b.workUntil+')','Baja al final ('+b.workUntil+')','Baja anticipada ('+b.workUntil+')'][decMode];
+    document.getElementById('evo-out').textContent=(evoPct>0?'+':'')+evoPct+'%/año';
 
     document.querySelectorAll('.preset').forEach(x=>x.classList.toggle('active',+x.dataset.ret===retPct));
 
-    const s=simulate(retPct,infPct,cutPct,decMode,b);
+    const s=simulate(retPct,infPct,cutPct,evoPct,b);
     const finalPort=s.portEnd[s.portEnd.length-1];
 
     let depletedAge=null;
@@ -473,7 +467,7 @@
     document.getElementById('final-val').textContent=finalPort<=0?'$0':fmtM(finalPort);
     document.getElementById('final-val').style.color=finalPort<=0?'var(--danger)':'var(--text)';
     document.getElementById('spend-val').textContent=fmt(s.expense[0]);
-    document.getElementById('maxspend-val').textContent=fmt(maxSustainable(retPct,infPct,decMode,b))+'/año';
+    document.getElementById('maxspend-val').textContent=fmt(maxSustainable(retPct,infPct,evoPct,b))+'/año';
 
     const labels=s.ages;
     const fd={labels,datasets:[
@@ -519,11 +513,11 @@
     const vol=+document.getElementById('vol').value;
     const infPct=+document.getElementById('inf').value;
     const cutPct=+document.getElementById('cut').value;
-    const decMode=+document.getElementById('dec').value;
+    const evoPct=+document.getElementById('evo').value;
 
     document.getElementById('vol-out').textContent=vol.toFixed(1).replace('.',',')+'%';
 
-    const m=simulateMC(meanRet,vol,infPct,cutPct,decMode,b,1000,mulberry32(1337));
+    const m=simulateMC(meanRet,vol,infPct,cutPct,evoPct,b,1000,mulberry32(1337));
 
     const sr=Math.round(m.successRate*100);
     const se=document.getElementById('success-val'), sc=document.getElementById('card-success');
@@ -535,7 +529,7 @@
     document.getElementById('mc-range-val').textContent=(m.finalP10<=0?'$0':fmtM(m.finalP10))+' – '+fmtM(m.finalP90);
     document.getElementById('mc-note').textContent='Éxito = el portfolio no se agota antes de los '+b.endAge+' años. 1.000 simulaciones · rentabilidad esperada '+meanRet.toFixed(1).replace('.',',')+'% · volatilidad '+vol.toFixed(1).replace('.',',')+'%.';
 
-    const base=simulate(meanRet,infPct,cutPct,decMode,b).portEnd.map(v=>Math.max(v,0));
+    const base=simulate(meanRet,infPct,cutPct,evoPct,b).portEnd.map(v=>Math.max(v,0));
 
     const C='118,211,215';
     const data={labels:m.ages,datasets:[
@@ -556,7 +550,7 @@
     } else { mcChart.data=data; mcChart.update(); }
   }
 
-  ['ret','inf','cut','dec','startAge','yearsToRet','p0','inc0','exp0'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+  ['ret','inf','cut','evo','startAge','yearsToRet','p0','inc0','exp0'].forEach(id=>document.getElementById(id).addEventListener('input',render));
   document.querySelectorAll('.preset').forEach(b=>b.addEventListener('click',()=>{
     document.getElementById('ret').value=b.dataset.ret; render();
   }));
